@@ -139,9 +139,11 @@ public partial class Customer // and make it partial
 }
 
 // Usage remains the same
-using var db = new LiteDatabase("data.db");
-var customers = db.GetCollection<Customer>();
-customers.Insert(new Customer { Name = "John" });
+using (var db = new LiteDatabase("data.db"))
+{
+    var customers = db.GetCollection<Customer>();
+    customers.Insert(new Customer { Name = "John" });
+}
 ```
 
 ---

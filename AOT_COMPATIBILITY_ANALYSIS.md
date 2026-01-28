@@ -393,7 +393,7 @@ public static class GeneratedMapper_Customer
 
 ### Current Code (Non-AOT)
 ```csharp
-using(var db = new LiteDatabase(@"MyData.db"))
+using (var db = new LiteDatabase(@"MyData.db"))
 {
     var col = db.GetCollection<Customer>("customers");
     col.Insert(new Customer { Name = "John" });
@@ -402,7 +402,7 @@ using(var db = new LiteDatabase(@"MyData.db"))
 
 ### AOT-Compatible Code (With Source Generator)
 ```csharp
-using(var db = new LiteDatabase(@"MyData.db"))
+using (var db = new LiteDatabase(@"MyData.db"))
 {
     var mapper = BsonMapper.CreateForAOT();
     mapper.RegisterType<Customer>(); // Or use [BsonDocument] attribute

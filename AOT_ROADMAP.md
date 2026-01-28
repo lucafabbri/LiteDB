@@ -236,7 +236,7 @@ samples/
 ### Before (LiteDB v5.x)
 ```csharp
 // Works with reflection (not AOT-compatible)
-using(var db = new LiteDatabase("data.db"))
+using (var db = new LiteDatabase("data.db"))
 {
     var customers = db.GetCollection<Customer>("customers");
     customers.Insert(new Customer { Name = "John" });
@@ -254,14 +254,14 @@ public partial class Customer // Note: must be partial
 }
 
 // Usage remains the same!
-using(var db = new LiteDatabase("data.db"))
+using (var db = new LiteDatabase("data.db"))
 {
     var customers = db.GetCollection<Customer>("customers");
     customers.Insert(new Customer { Name = "John" });
 }
 
 // Or explicitly use AOT mode
-using(var db = new LiteDatabase("data.db"))
+using (var db = new LiteDatabase("data.db"))
 {
     db.Mapper = BsonMapper.CreateForAOT();
     db.Mapper.RegisterType<Customer>();
