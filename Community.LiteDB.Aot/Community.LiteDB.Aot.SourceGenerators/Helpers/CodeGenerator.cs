@@ -28,6 +28,11 @@ internal static class CodeGenerator
         {
             sb.AppendLine($"using {entity.Namespace}.Generated;");
         }
+        // Also add using if any collection has nested items
+        else if (entity.Properties.Any(p => p.IsCollectionItemNested))
+        {
+            sb.AppendLine($"using {entity.Namespace}.Generated;");
+        }
         
         sb.AppendLine();
         sb.AppendLine($"namespace {entity.Namespace};");
@@ -142,33 +147,30 @@ internal static class CodeGenerator
         foreach (var prop in nestedType.Properties)
         {
             var fieldName = string.IsNullOrEmpty(prop.BsonFieldName) ? prop.Name : prop.BsonFieldName;
+            var isNested = prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName);
             
-            // Handle nested objects within nested objects (use shared mappers)
-            if (prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName))
-            {
-                if (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String")
-                {
-                    sb.AppendLine($"        if (obj.{prop.Name} != null)");
-                    sb.AppendLine("        {");
-                    sb.AppendLine($"            doc[\"{fieldName}\"] = {prop.NestedTypeName}Mapper.Serialize(obj.{prop.Name});");
-                    sb.AppendLine("        }");
-                }
-                else
-                {
-                    sb.AppendLine($"        doc[\"{fieldName}\"] = {prop.NestedTypeName}Mapper.Serialize(obj.{prop.Name});");
-                }
-            }
-            // Handle regular properties
-            else if (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String")
+            // Get conversion with shared mapper support
+            var conversionCode = GetBsonValueConversion(
+                $"obj.{prop.Name}", 
+                prop.TypeName, 
+                prop.IsNullable, 
+                prop.IsCollection, 
+                prop.CollectionItemType,
+                useSharedMappers: isNested,
+                nestedTypeName: prop.NestedTypeName
+            );
+            
+            // Handle nullable properties
+            if (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String")
             {
                 sb.AppendLine($"        if (obj.{prop.Name} != null)");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            doc[\"{fieldName}\"] = {GetBsonValueConversion($"obj.{prop.Name}", prop.TypeName, prop.IsNullable, prop.IsCollection, prop.CollectionItemType)};");
+                sb.AppendLine($"            doc[\"{fieldName}\"] = {conversionCode};");
                 sb.AppendLine("        }");
             }
             else
             {
-                sb.AppendLine($"        doc[\"{fieldName}\"] = {GetBsonValueConversion($"obj.{prop.Name}", prop.TypeName, prop.IsNullable, prop.IsCollection, prop.CollectionItemType)};");
+                sb.AppendLine($"        doc[\"{fieldName}\"] = {conversionCode};");
             }
         }
         
@@ -190,25 +192,30 @@ internal static class CodeGenerator
             var fieldName = string.IsNullOrEmpty(prop.BsonFieldName) ? prop.Name : prop.BsonFieldName;
             var isLast = prop == lastProp;
             var comma = isLast ? "" : ",";
+            var isNested = prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName);
             
-            // Handle nested objects within nested objects (use shared mappers)
-            if (prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName))
+            // Get extraction with shared mapper support
+            var extractionCode = GetBsonValueExtraction(
+                $"doc[\"{fieldName}\"]",
+                prop.TypeName,
+                prop.IsNullable,
+                prop.IsCollection,
+                prop.CollectionItemType,
+                useSharedMappers: isNested,
+                nestedTypeName: prop.NestedTypeName
+            );
+            
+            // Handle nullable and non-nullable properties
+            if (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String")
             {
                 sb.AppendLine($"            {prop.Name} = doc.ContainsKey(\"{fieldName}\") && !doc[\"{fieldName}\"].IsNull");
-                sb.AppendLine($"                ? {prop.NestedTypeName}Mapper.Deserialize(doc[\"{fieldName}\"].AsDocument)");
-                sb.AppendLine($"                : null{comma}");
-            }
-            // Handle regular properties
-            else if (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String")
-            {
-                sb.AppendLine($"            {prop.Name} = doc.ContainsKey(\"{fieldName}\") && !doc[\"{fieldName}\"].IsNull");
-                sb.AppendLine($"                ? {GetBsonValueExtraction($"doc[\"{fieldName}\"]", prop.TypeName, prop.IsNullable, prop.IsCollection, prop.CollectionItemType)}");
+                sb.AppendLine($"                ? {extractionCode}");
                 sb.AppendLine($"                : null{comma}");
             }
             else
             {
                 sb.AppendLine($"            {prop.Name} = doc.ContainsKey(\"{fieldName}\")");
-                sb.AppendLine($"                ? {GetBsonValueExtraction($"doc[\"{fieldName}\"]", prop.TypeName, prop.IsNullable, prop.IsCollection, prop.CollectionItemType)}");
+                sb.AppendLine($"                ? {extractionCode}");
                 sb.AppendLine($"                : default{comma}");
             }
         }
@@ -292,12 +299,37 @@ internal static class CodeGenerator
             {
                 sb.AppendLine($"        if (entity.{prop.Name} != null)");
                 sb.AppendLine("        {");
-                sb.AppendLine($"            doc[\"{fieldName}\"] = {GetBsonValueConversion($"entity.{prop.Name}", prop.TypeName, prop.IsNullable, prop.IsCollection, prop.CollectionItemType)};");
+                
+                // Check if it's a collection with nested items
+                var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
+                var conversionCode = GetBsonValueConversion(
+                    $"entity.{prop.Name}", 
+                    prop.TypeName, 
+                    prop.IsNullable, 
+                    prop.IsCollection, 
+                    prop.CollectionItemType,
+                    useSharedMappers: prop.IsCollectionItemNested,
+                    nestedTypeName: nestedName
+                );
+                
+                sb.AppendLine($"            doc[\"{fieldName}\"] = {conversionCode};");
                 sb.AppendLine("        }");
             }
             else
             {
-                sb.AppendLine($"        doc[\"{fieldName}\"] = {GetBsonValueConversion($"entity.{prop.Name}", prop.TypeName, prop.IsNullable, prop.IsCollection, prop.CollectionItemType)};");
+                // Check if it's a collection with nested items
+                var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
+                var conversionCode = GetBsonValueConversion(
+                    $"entity.{prop.Name}", 
+                    prop.TypeName, 
+                    prop.IsNullable, 
+                    prop.IsCollection, 
+                    prop.CollectionItemType,
+                    useSharedMappers: prop.IsCollectionItemNested,
+                    nestedTypeName: nestedName
+                );
+                
+                sb.AppendLine($"        doc[\"{fieldName}\"] = {conversionCode};");
             }
         }
         
@@ -519,11 +551,35 @@ internal static class CodeGenerator
             // Handle regular properties
             else if (prop.IsNullable)
             {
-                sb.AppendLine($"            {prop.Name} = doc.ContainsKey(\"{fieldName}\") ? {GetBsonValueExtraction($"doc[\"{fieldName}\"]", prop.TypeName)} : null{comma}");
+                // Check if it's a collection with nested items
+                var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
+                var extractionCode = GetBsonValueExtraction(
+                    $"doc[\"{fieldName}\"]",
+                    prop.TypeName,
+                    prop.IsNullable,
+                    prop.IsCollection,
+                    prop.CollectionItemType,
+                    useSharedMappers: prop.IsCollectionItemNested,
+                    nestedTypeName: nestedName
+                );
+                
+                sb.AppendLine($"            {prop.Name} = doc.ContainsKey(\"{fieldName}\") ? {extractionCode} : null{comma}");
             }
             else
             {
-                sb.AppendLine($"            {prop.Name} = {GetBsonValueExtraction($"doc[\"{fieldName}\"]", prop.TypeName)}{comma}");
+                // Check if it's a collection with nested items
+                var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
+                var extractionCode = GetBsonValueExtraction(
+                    $"doc[\"{fieldName}\"]",
+                    prop.TypeName,
+                    prop.IsNullable,
+                    prop.IsCollection,
+                    prop.CollectionItemType,
+                    useSharedMappers: prop.IsCollectionItemNested,
+                    nestedTypeName: nestedName
+                );
+                
+                sb.AppendLine($"            {prop.Name} = {extractionCode}{comma}");
             }
         }
 
@@ -569,13 +625,25 @@ internal static class CodeGenerator
 
     /// <summary>
     /// Generates code to convert C# value to BsonValue
+    /// Handles primitives, collections, and nested objects with shared mappers
     /// </summary>
-    private static string GetBsonValueConversion(string valueExpression, string typeName, bool isNullable = false, bool isCollection = false, string? collectionItemType = null)
+    private static string GetBsonValueConversion(string valueExpression, string typeName, bool isNullable = false, bool isCollection = false, string? collectionItemType = null, bool useSharedMappers = false, string? nestedTypeName = null)
     {
         // Handle collections first
         if (isCollection && collectionItemType != null)
         {
+            // Check if collection item is a nested object
+            if (useSharedMappers && nestedTypeName != null)
+            {
+                return $"new BsonArray({valueExpression}.Select(item => {nestedTypeName}Mapper.Serialize(item)))";
+            }
             return $"new BsonArray({valueExpression}.Select(item => {GetBsonValueConversion("item", collectionItemType)}))";
+        }
+
+        // Handle nested objects with shared mappers
+        if (useSharedMappers && nestedTypeName != null)
+        {
+            return $"{nestedTypeName}Mapper.Serialize({valueExpression})";
         }
 
         // Handle nullable wrapper
@@ -613,25 +681,27 @@ internal static class CodeGenerator
     }
 
     /// <summary>
-    /// Generates code to serialize a nested object to BsonDocument
-    /// </summary>
-    private static string SerializeNestedObject(string valueExpression, string typeName, EntityInfo? nestedEntity = null)
-    {
-        // For now, generate inline serialization
-        // TODO: Could optimize by generating separate mapper for nested type
-        return $"SerializeNested_{typeName}({valueExpression})";
-    }
-
-    /// <summary>
     /// Generates code to extract value from BsonValue
+    /// Handles primitives, collections, and nested objects with shared mappers
     /// </summary>
-    private static string GetBsonValueExtraction(string bsonExpression, string typeName, bool isNullable = false, bool isCollection = false, string? collectionItemType = null)
+    private static string GetBsonValueExtraction(string bsonExpression, string typeName, bool isNullable = false, bool isCollection = false, string? collectionItemType = null, bool useSharedMappers = false, string? nestedTypeName = null)
     {
         // Handle collections first
         if (isCollection && collectionItemType != null)
         {
+            // Check if collection item is a nested object
+            if (useSharedMappers && nestedTypeName != null)
+            {
+                return $"{bsonExpression}.AsArray.Select(item => {nestedTypeName}Mapper.Deserialize(item.AsDocument)).ToList()";
+            }
             var itemExtraction = GetBsonValueExtraction("item", collectionItemType);
             return $"{bsonExpression}.AsArray.Select(item => {itemExtraction}).ToList()";
+        }
+
+        // Handle nested objects with shared mappers
+        if (useSharedMappers && nestedTypeName != null)
+        {
+            return $"{nestedTypeName}Mapper.Deserialize({bsonExpression}.AsDocument)";
         }
 
         var extraction = typeName switch

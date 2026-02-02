@@ -56,6 +56,9 @@ internal sealed class PropertyInfo
     public bool IsCollection { get; set; }
     public string? CollectionItemType { get; set; }
     
+    // Indicates if collection item type is a nested object
+    public bool IsCollectionItemNested { get; set; }
+    
     // Nested object support
     public bool IsNestedObject { get; set; }
     public string? NestedTypeName { get; set; }

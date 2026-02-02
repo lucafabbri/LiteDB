@@ -58,5 +58,12 @@ public partial class AppDbContext : LiteDbContext
             entity.HasKey(x => x.Id).AutoIncrement();
             entity.ToCollection("orders");
         });
+        
+        // Configure Company entity (with List<Address> - collection of nested objects!)
+        modelBuilder.Entity<Company>(entity =>
+        {
+            entity.HasKey(x => x.Id).AutoIncrement();
+            entity.ToCollection("companies");
+        });
     }
 }

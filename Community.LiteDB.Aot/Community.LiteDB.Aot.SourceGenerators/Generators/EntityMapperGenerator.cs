@@ -174,6 +174,14 @@ public class EntityMapperGenerator : IIncrementalGenerator
             {
                 propInfo.IsCollection = true;
                 propInfo.CollectionItemType = itemType?.Name;
+                
+                // Check if collection item is a nested object
+                if (itemType != null && IsNestedObjectType(itemType))
+                {
+                    propInfo.IsCollectionItemNested = true;
+                    propInfo.NestedTypeName = itemType.Name;
+                    propInfo.NestedTypeFullName = itemType.ToDisplayString();
+                }
             }
             // Detect nested object types
             else if (IsNestedObjectType(property.Type))
