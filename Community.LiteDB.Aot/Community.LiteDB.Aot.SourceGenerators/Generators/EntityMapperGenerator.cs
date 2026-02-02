@@ -548,20 +548,71 @@ public class EntityMapperGenerator : IIncrementalGenerator
     
     private static void GenerateMappers(SourceProductionContext context, DbContextInfo dbContextInfo)
     {
-        // Generate mapper for each entity
+        // Step 1: Collect all nested types from all entities into global collection
+        CollectGlobalNestedTypes(dbContextInfo);
+        
+        // Step 2: Generate shared mappers for nested types (one per type, reusable)
+        foreach (var kvp in dbContextInfo.GlobalNestedTypes)
+        {
+            var nestedTypeName = kvp.Key;
+            var nestedTypeInfo = kvp.Value;
+            
+            var sharedMapperCode = CodeGenerator.GenerateSharedNestedMapper(nestedTypeInfo);
+            var fileName = $"{nestedTypeName}Mapper.g.cs";
+            context.AddSource(fileName, sharedMapperCode);
+        }
+        
+        // Step 3: Generate mapper for each entity (referencing shared nested mappers)
         foreach (var entity in dbContextInfo.Entities)
         {
-            var mapperCode = CodeGenerator.GenerateMapper(entity);
+            var mapperCode = CodeGenerator.GenerateMapper(entity, useSharedMappers: true);
             var fileName = $"{entity.Name}Mapper.g.cs";
             context.AddSource(fileName, mapperCode);
         }
         
-        // Generate DbContext partial class
+        // Step 4: Generate DbContext partial class
         if (dbContextInfo.Entities.Count > 0)
         {
             var contextCode = CodeGenerator.GenerateDbContextPartial(dbContextInfo);
             var fileName = $"{dbContextInfo.ClassName}.g.cs";
             context.AddSource(fileName, contextCode);
+        }
+    }
+    
+    /// <summary>
+    /// Collects all nested types from all entities into the global collection
+    /// </summary>
+    private static void CollectGlobalNestedTypes(DbContextInfo dbContextInfo)
+    {
+        foreach (var entity in dbContextInfo.Entities)
+        {
+            CollectNestedTypesRecursively(entity.NestedTypes, dbContextInfo.GlobalNestedTypes);
+        }
+    }
+    
+    /// <summary>
+    /// Recursively collects nested types into target dictionary
+    /// </summary>
+    private static void CollectNestedTypesRecursively(
+        Dictionary<string, Models.NestedTypeInfo> source,
+        Dictionary<string, Models.NestedTypeInfo> target)
+    {
+        foreach (var kvp in source)
+        {
+            var name = kvp.Key;
+            var info = kvp.Value;
+            
+            // Add to global collection if not already present
+            if (!target.ContainsKey(name))
+            {
+                target[name] = info;
+            }
+            
+            // Recursively collect nested types within this type
+            if (info.NestedTypes.Any())
+            {
+                CollectNestedTypesRecursively(info.NestedTypes, target);
+            }
         }
     }
 }

@@ -84,4 +84,10 @@ internal sealed class DbContextInfo
     public string ClassName { get; set; } = string.Empty;
     public string Namespace { get; set; } = string.Empty;
     public List<EntityInfo> Entities { get; set; } = new();
+    
+    /// <summary>
+    /// Global nested types collection - all nested types from all entities
+    /// Used to generate shared reusable mappers
+    /// </summary>
+    public Dictionary<string, NestedTypeInfo> GlobalNestedTypes { get; set; } = new();
 }
