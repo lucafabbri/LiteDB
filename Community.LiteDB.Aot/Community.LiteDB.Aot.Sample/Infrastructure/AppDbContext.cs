@@ -65,5 +65,12 @@ public partial class AppDbContext : LiteDbContext
             entity.HasKey(x => x.Id).AutoIncrement();
             entity.ToCollection("companies");
         });
+        
+        // Configure ProductWithMoney entity (DDD with private setters!)
+        modelBuilder.Entity<ProductWithMoney>(entity =>
+        {
+            entity.HasKey(x => x.Id).AutoIncrement();
+            entity.ToCollection("products_with_money");
+        });
     }
 }

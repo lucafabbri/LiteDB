@@ -72,6 +72,11 @@ internal sealed class PropertyInfo
     public string? Description { get; set; }
     public object? DefaultValue { get; set; }
     
+    // Property accessibility (for DDD support)
+    public bool HasPublicSetter { get; set; } = true;
+    public bool HasInitOnlySetter { get; set; }
+    public string? BackingFieldName { get; set; } // e.g., "<Name>k__BackingField"
+    
     // Validation attributes
     public int? MinLength { get; set; }
     public object? RangeMin { get; set; }

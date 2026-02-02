@@ -153,6 +153,26 @@ public class EntityMapperGenerator : IIncrementalGenerator
                 IsNullable = IsNullableType(property.Type)
             };
             
+            // Analyze property setter accessibility (for DDD support)
+            var setMethod = property.SetMethod;
+            if (setMethod != null)
+            {
+                propInfo.HasPublicSetter = setMethod.DeclaredAccessibility == Accessibility.Public;
+                propInfo.HasInitOnlySetter = setMethod.IsInitOnly;
+                
+                // Generate backing field name for non-public setters
+                if (!propInfo.HasPublicSetter || propInfo.HasInitOnlySetter)
+                {
+                    // Compiler-generated backing field format: <PropertyName>k__BackingField
+                    propInfo.BackingFieldName = $"<{property.Name}>k__BackingField";
+                }
+            }
+            else
+            {
+                // No setter - readonly property
+                propInfo.HasPublicSetter = false;
+            }
+            
             // Read Data Annotations attributes
             propInfo.IsKey = AttributeHelper.IsKey(property);
             propInfo.IsRequired = AttributeHelper.IsRequired(property);
@@ -491,6 +511,25 @@ public class EntityMapperGenerator : IIncrementalGenerator
                     BsonFieldName = property.Name,
                     IsNullable = IsNullableType(property.Type)
                 };
+                
+                // Analyze property setter accessibility (for DDD support)
+                var setMethod = property.SetMethod;
+                if (setMethod != null)
+                {
+                    propInfo.HasPublicSetter = setMethod.DeclaredAccessibility == Accessibility.Public;
+                    propInfo.HasInitOnlySetter = setMethod.IsInitOnly;
+                    
+                    // Generate backing field name for non-public setters
+                    if (!propInfo.HasPublicSetter || propInfo.HasInitOnlySetter)
+                    {
+                        propInfo.BackingFieldName = $"<{property.Name}>k__BackingField";
+                    }
+                }
+                else
+                {
+                    // No setter - readonly property
+                    propInfo.HasPublicSetter = false;
+                }
                 
                 // Detect collection types
                 if (IsCollectionType(property.Type, out var itemType))

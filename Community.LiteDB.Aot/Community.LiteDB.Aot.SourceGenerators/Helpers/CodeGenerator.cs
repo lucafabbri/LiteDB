@@ -20,6 +20,9 @@ internal static class CodeGenerator
         sb.AppendLine();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Linq;");
+        sb.AppendLine("using System.Linq.Expressions;");
+        sb.AppendLine("using System.Reflection;");
+        sb.AppendLine("using System.Runtime.Serialization;");
         sb.AppendLine("using LiteDB;");
         sb.AppendLine("using Community.LiteDB.Aot.Mapping;");
         
@@ -86,6 +89,9 @@ internal static class CodeGenerator
         sb.AppendLine();
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Linq;");
+        sb.AppendLine("using System.Linq.Expressions;");
+        sb.AppendLine("using System.Reflection;");
+        sb.AppendLine("using System.Runtime.Serialization;");
         sb.AppendLine("using LiteDB;");
         sb.AppendLine();
         sb.AppendLine($"namespace {nestedType.Namespace}.Generated;");
@@ -180,15 +186,33 @@ internal static class CodeGenerator
     
     private static void GenerateSharedDeserializeMethod(StringBuilder sb, NestedTypeInfo nestedType)
     {
+        // Check if we need reflection for this nested type
+        var hasNonPublicSetters = nestedType.Properties.Any(p => !p.HasPublicSetter && !string.IsNullOrEmpty(p.BackingFieldName));
+        
+        if (hasNonPublicSetters)
+        {
+            GenerateSharedDeserializeWithReflection(sb, nestedType);
+        }
+        else
+        {
+            GenerateSharedDeserializeWithInitializer(sb, nestedType);
+        }
+    }
+    
+    private static void GenerateSharedDeserializeWithInitializer(StringBuilder sb, NestedTypeInfo nestedType)
+    {
         sb.AppendLine($"    public static {nestedType.Name}? Deserialize(BsonDocument doc)");
         sb.AppendLine("    {");
         sb.AppendLine($"        return new {nestedType.Name}");
         sb.AppendLine("        {");
         
         // Deserialize each property
-        var lastProp = nestedType.Properties.LastOrDefault();
+        var lastProp = nestedType.Properties.Where(p => p.HasPublicSetter).LastOrDefault();
         foreach (var prop in nestedType.Properties)
         {
+            if (!prop.HasPublicSetter)
+                continue; // Skip non-public setters
+                
             var fieldName = string.IsNullOrEmpty(prop.BsonFieldName) ? prop.Name : prop.BsonFieldName;
             var isLast = prop == lastProp;
             var comma = isLast ? "" : ",";
@@ -221,6 +245,92 @@ internal static class CodeGenerator
         }
         
         sb.AppendLine("        };");
+        sb.AppendLine("    }");
+    }
+    
+    private static void GenerateSharedDeserializeWithReflection(StringBuilder sb, NestedTypeInfo nestedType)
+    {
+        var privateProperties = nestedType.Properties
+            .Where(p => !string.IsNullOrEmpty(p.BackingFieldName))
+            .ToList();
+        
+        if (!privateProperties.Any())
+            return;
+        
+        // Generate compiled Expression Tree setters
+        sb.AppendLine();
+        sb.AppendLine("    // Compiled Expression Trees for DDD value objects with private setters");
+        
+        foreach (var prop in privateProperties)
+        {
+            var nullableMark = (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String") ? "?" : "";
+            sb.AppendLine($"    private static readonly Action<{nestedType.Name}, {prop.TypeName}{nullableMark}>? _set{prop.Name};");
+        }
+        
+        // Generate static constructor
+        sb.AppendLine();
+        sb.AppendLine($"    static {nestedType.Name}Mapper()");
+        sb.AppendLine("    {");
+        
+        foreach (var prop in privateProperties)
+        {
+            var nullableMark = (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String") ? "?" : "";
+            var typeForExpression = prop.TypeName.TrimEnd('?'); // Remove ? for typeof()
+            
+            sb.AppendLine($"        var {prop.Name.ToLower()}Field = typeof({nestedType.Name}).GetField(\"{prop.BackingFieldName}\",");
+            sb.AppendLine($"            BindingFlags.NonPublic | BindingFlags.Instance);");
+            sb.AppendLine($"        if ({prop.Name.ToLower()}Field != null)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var objParam = Expression.Parameter(typeof({nestedType.Name}), \"obj\");");
+            sb.AppendLine($"            var valueParam = Expression.Parameter(typeof({typeForExpression}), \"value\");");
+            sb.AppendLine($"            _set{prop.Name} = Expression.Lambda<Action<{nestedType.Name}, {prop.TypeName}{nullableMark}>>(");
+            sb.AppendLine($"                Expression.Assign(Expression.Field(objParam, {prop.Name.ToLower()}Field), valueParam),");
+            sb.AppendLine($"                objParam, valueParam");
+            sb.AppendLine($"            ).Compile();");
+            sb.AppendLine("        }");
+        }
+        
+        sb.AppendLine("    }");
+        
+        sb.AppendLine();
+        sb.AppendLine($"    public static {nestedType.Name}? Deserialize(BsonDocument doc)");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        var obj = ({nestedType.Name})FormatterServices.GetUninitializedObject(typeof({nestedType.Name}));");
+        sb.AppendLine();
+        
+        foreach (var prop in nestedType.Properties)
+        {
+            var fieldName = string.IsNullOrEmpty(prop.BsonFieldName) ? prop.Name : prop.BsonFieldName;
+            var isNested = prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName);
+            
+            // Get extraction code
+            var extractionCode = GetBsonValueExtraction(
+                $"doc[\"{fieldName}\"]",
+                prop.TypeName,
+                prop.IsNullable,
+                prop.IsCollection,
+                prop.CollectionItemType,
+                useSharedMappers: isNested,
+                nestedTypeName: prop.NestedTypeName
+            );
+            
+            var valueCode = (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String")
+                ? $"doc.ContainsKey(\"{fieldName}\") && !doc[\"{fieldName}\"].IsNull ? {extractionCode} : null"
+                : $"doc.ContainsKey(\"{fieldName}\") ? {extractionCode} : default";
+            
+            // Set value based on accessibility
+            if (prop.HasPublicSetter && !prop.HasInitOnlySetter)
+            {
+                sb.AppendLine($"        obj.{prop.Name} = {valueCode};");
+            }
+            else if (!string.IsNullOrEmpty(prop.BackingFieldName))
+            {
+                sb.AppendLine($"        _set{prop.Name}?.Invoke(obj, {valueCode});");
+            }
+        }
+        
+        sb.AppendLine();
+        sb.AppendLine("        return obj;");
         sb.AppendLine("    }");
     }
     
@@ -511,19 +621,37 @@ internal static class CodeGenerator
 
     private static void GenerateDeserializeMethod(StringBuilder sb, EntityInfo entity, bool useSharedMappers = false)
     {
+        // Check if we need to use FormatterServices (properties with non-public setters)
+        var hasNonPublicSetters = entity.Properties.Any(p => !p.HasPublicSetter && !string.IsNullOrEmpty(p.BackingFieldName));
+        
+        if (hasNonPublicSetters)
+        {
+            GenerateDeserializeWithReflection(sb, entity, useSharedMappers);
+        }
+        else
+        {
+            GenerateDeserializeWithInitializer(sb, entity, useSharedMappers);
+        }
+    }
+    
+    /// <summary>
+    /// Generate deserialize using object initializer (for entities with all public setters)
+    /// </summary>
+    private static void GenerateDeserializeWithInitializer(StringBuilder sb, EntityInfo entity, bool useSharedMappers)
+    {
         sb.AppendLine($"    public {entity.Name} Deserialize(BsonDocument doc)");
         sb.AppendLine("    {");
         sb.AppendLine($"        return new {entity.Name}");
         sb.AppendLine("        {");
 
         // ID property
-        if (entity.IdProperty != null)
+        if (entity.IdProperty != null && entity.IdProperty.HasPublicSetter)
         {
             sb.AppendLine($"            {entity.IdProperty.Name} = {GetBsonValueExtraction("doc[\"_id\"]", entity.IdProperty.TypeName)},");
         }
 
         // Other properties
-        var lastProp = entity.Properties.LastOrDefault();
+        var lastProp = entity.Properties.Where(p => p.HasPublicSetter).LastOrDefault();
         foreach (var prop in entity.Properties)
         {
             if (entity.IgnoredProperties.Contains(prop.Name))
@@ -531,11 +659,13 @@ internal static class CodeGenerator
 
             if (prop.Name == entity.IdProperty?.Name)
                 continue;
+                
+            if (!prop.HasPublicSetter)
+                continue; // Skip non-public setters
 
             var fieldName = string.IsNullOrEmpty(prop.BsonFieldName) ? prop.Name : prop.BsonFieldName;
             var isLast = prop == lastProp;
             var comma = isLast ? "" : ",";
-
 
             // Handle nested objects
             if (prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName))
@@ -551,7 +681,6 @@ internal static class CodeGenerator
             // Handle regular properties
             else if (prop.IsNullable)
             {
-                // Check if it's a collection with nested items
                 var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
                 var extractionCode = GetBsonValueExtraction(
                     $"doc[\"{fieldName}\"]",
@@ -567,7 +696,6 @@ internal static class CodeGenerator
             }
             else
             {
-                // Check if it's a collection with nested items
                 var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
                 var extractionCode = GetBsonValueExtraction(
                     $"doc[\"{fieldName}\"]",
@@ -584,6 +712,142 @@ internal static class CodeGenerator
         }
 
         sb.AppendLine("        };");
+        sb.AppendLine("    }");
+    }
+    
+    /// <summary>
+    /// Generate deserialize using FormatterServices + compiled Expression Trees (for DDD entities with private setters)
+    /// </summary>
+    private static void GenerateDeserializeWithReflection(StringBuilder sb, EntityInfo entity, bool useSharedMappers)
+    {
+        var privateProperties = entity.Properties
+            .Where(p => !string.IsNullOrEmpty(p.BackingFieldName) && !entity.IgnoredProperties.Contains(p.Name))
+            .ToList();
+        
+        if (!privateProperties.Any())
+            return;
+        
+        // Generate compiled Expression Tree setters
+        sb.AppendLine();
+        sb.AppendLine("    // Compiled Expression Trees for high-performance setting of private/init-only properties");
+        
+        foreach (var prop in privateProperties)
+        {
+            var nullableMark = (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String") ? "?" : "";
+            sb.AppendLine($"    private static readonly Action<{entity.Name}, {prop.TypeName}{nullableMark}>? _set{prop.Name};");
+        }
+        
+        // Generate static constructor that compiles the expressions
+        sb.AppendLine();
+        sb.AppendLine($"    static {entity.Name}Mapper()");
+        sb.AppendLine("    {");
+        
+        foreach (var prop in privateProperties)
+        {
+            var nullableMark = (prop.IsNullable || prop.TypeName == "string" || prop.TypeName == "String") ? "?" : "";
+            var typeForExpression = prop.TypeName.TrimEnd('?'); // Remove ? for typeof()
+            
+            sb.AppendLine($"        var {prop.Name.ToLower()}Field = typeof({entity.Name}).GetField(\"{prop.BackingFieldName}\",");
+            sb.AppendLine($"            BindingFlags.NonPublic | BindingFlags.Instance);");
+            sb.AppendLine($"        if ({prop.Name.ToLower()}Field != null)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            var objParam = Expression.Parameter(typeof({entity.Name}), \"obj\");");
+            sb.AppendLine($"            var valueParam = Expression.Parameter(typeof({typeForExpression}), \"value\");");
+            sb.AppendLine($"            _set{prop.Name} = Expression.Lambda<Action<{entity.Name}, {prop.TypeName}{nullableMark}>>(");
+            sb.AppendLine($"                Expression.Assign(Expression.Field(objParam, {prop.Name.ToLower()}Field), valueParam),");
+            sb.AppendLine($"                objParam, valueParam");
+            sb.AppendLine($"            ).Compile();");
+            sb.AppendLine("        }");
+        }
+        
+        sb.AppendLine("    }");
+        
+        sb.AppendLine();
+        sb.AppendLine($"    public {entity.Name} Deserialize(BsonDocument doc)");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        // Use FormatterServices to create instance without calling constructor");
+        sb.AppendLine($"        var entity = ({entity.Name})FormatterServices.GetUninitializedObject(typeof({entity.Name}));");
+        sb.AppendLine();
+        
+        // Set ID property
+        if (entity.IdProperty != null)
+        {
+            var extractionCode = GetBsonValueExtraction("doc[\"_id\"]", entity.IdProperty.TypeName);
+            
+            if (entity.IdProperty.HasPublicSetter)
+            {
+                sb.AppendLine($"        entity.{entity.IdProperty.Name} = {extractionCode};");
+            }
+            else if (!string.IsNullOrEmpty(entity.IdProperty.BackingFieldName))
+            {
+                sb.AppendLine($"        _set{entity.IdProperty.Name}?.Invoke(entity, {extractionCode});");
+            }
+        }
+        
+        // Set other properties
+        foreach (var prop in entity.Properties)
+        {
+            if (entity.IgnoredProperties.Contains(prop.Name))
+                continue;
+
+            if (prop.Name == entity.IdProperty?.Name)
+                continue;
+
+            var fieldName = string.IsNullOrEmpty(prop.BsonFieldName) ? prop.Name : prop.BsonFieldName;
+            
+            // Generate extraction code
+            string extractionCode;
+            if (prop.IsNestedObject && !string.IsNullOrEmpty(prop.NestedTypeName))
+            {
+                var deserializeCall = useSharedMappers 
+                    ? $"{prop.NestedTypeName}Mapper.Deserialize(doc[\"{fieldName}\"].AsDocument)"
+                    : $"DeserializeNested{prop.NestedTypeName}(doc[\"{fieldName}\"].AsDocument)";
+                
+                extractionCode = $"doc.ContainsKey(\"{fieldName}\") && !doc[\"{fieldName}\"].IsNull ? {deserializeCall} : null";
+            }
+            else if (prop.IsNullable)
+            {
+                var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
+                var extraction = GetBsonValueExtraction(
+                    $"doc[\"{fieldName}\"]",
+                    prop.TypeName,
+                    prop.IsNullable,
+                    prop.IsCollection,
+                    prop.CollectionItemType,
+                    useSharedMappers: prop.IsCollectionItemNested,
+                    nestedTypeName: nestedName
+                );
+                extractionCode = $"doc.ContainsKey(\"{fieldName}\") ? {extraction} : null";
+            }
+            else
+            {
+                var nestedName = prop.IsCollectionItemNested ? prop.NestedTypeName : null;
+                extractionCode = GetBsonValueExtraction(
+                    $"doc[\"{fieldName}\"]",
+                    prop.TypeName,
+                    prop.IsNullable,
+                    prop.IsCollection,
+                    prop.CollectionItemType,
+                    useSharedMappers: prop.IsCollectionItemNested,
+                    nestedTypeName: nestedName
+                );
+            }
+            
+            // Set value based on accessibility
+            if (prop.HasPublicSetter && !prop.HasInitOnlySetter)
+            {
+                // Public setter - direct assignment (fastest)
+                sb.AppendLine($"        entity.{prop.Name} = {extractionCode};");
+            }
+            else if (!string.IsNullOrEmpty(prop.BackingFieldName))
+            {
+                // Private/init-only setter - use compiled expression tree (near-native speed)
+                sb.AppendLine($"        _set{prop.Name}?.Invoke(entity, {extractionCode});");
+            }
+        }
+        
+        sb.AppendLine();
+        sb.AppendLine("        return entity;");
         sb.AppendLine("    }");
     }
 
