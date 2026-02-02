@@ -1,0 +1,87 @@
+using System.Collections.Generic;
+
+namespace Community.LiteDB.Aot.SourceGenerators.Models;
+
+/// <summary>
+/// Represents an entity discovered in DbContext
+/// </summary>
+internal sealed class EntityInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Namespace { get; set; } = string.Empty;
+    public string FullTypeName { get; set; } = string.Empty;
+    public string CollectionName { get; set; } = string.Empty;
+    
+    public PropertyInfo? IdProperty { get; set; }
+    public bool AutoId { get; set; }
+    
+    public List<PropertyInfo> Properties { get; set; } = new();
+    public HashSet<string> IgnoredProperties { get; set; } = new();
+    
+    // Nested types information
+    public Dictionary<string, NestedTypeInfo> NestedTypes { get; set; } = new();
+}
+
+/// <summary>
+/// Represents a nested type (like Address in Customer.Address)
+/// </summary>
+internal sealed class NestedTypeInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Namespace { get; set; } = string.Empty;
+    public string FullTypeName { get; set; } = string.Empty;
+    public List<PropertyInfo> Properties { get; set; } = new();
+    public int Depth { get; set; } = 1; // Nesting depth (1 = direct child, 2 = nested-nested, etc.)
+    
+    // Nested types within this nested type
+    public Dictionary<string, NestedTypeInfo> NestedTypes { get; set; } = new();
+}
+
+/// <summary>
+/// Represents a property in an entity
+/// </summary>
+internal sealed class PropertyInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string TypeName { get; set; } = string.Empty;
+    public string BsonFieldName { get; set; } = string.Empty;
+    
+    public bool IsRequired { get; set; }
+    public int? MaxLength { get; set; }
+    public bool HasIndex { get; set; }
+    public string? IndexName { get; set; }
+    public bool IsUnique { get; set; }
+    
+    public bool IsNullable { get; set; }
+    public bool IsCollection { get; set; }
+    public string? CollectionItemType { get; set; }
+    
+    // Nested object support
+    public bool IsNestedObject { get; set; }
+    public string? NestedTypeName { get; set; }
+    public string? NestedTypeFullName { get; set; }
+    
+    // Data Annotations support
+    public bool IsKey { get; set; }
+    public bool IsBrowsable { get; set; } = true;
+    public bool IsReadOnly { get; set; }
+    public string? DisplayName { get; set; }
+    public string? Description { get; set; }
+    public object? DefaultValue { get; set; }
+    
+    // Validation attributes
+    public int? MinLength { get; set; }
+    public object? RangeMin { get; set; }
+    public object? RangeMax { get; set; }
+    public string? RegularExpression { get; set; }
+}
+
+/// <summary>
+/// Represents a DbContext class to generate code for
+/// </summary>
+internal sealed class DbContextInfo
+{
+    public string ClassName { get; set; } = string.Empty;
+    public string Namespace { get; set; } = string.Empty;
+    public List<EntityInfo> Entities { get; set; } = new();
+}
