@@ -231,6 +231,16 @@ public class EntityMapperGenerator : IIncrementalGenerator
         if (entityInfo.IdProperty == null)
         {
             entityInfo.IdProperty = entityInfo.Properties.FirstOrDefault(p => p.IsKey);
+            if (entityInfo.IdProperty != null)
+            {
+                // [Key] attribute found - enable AutoId by default for int/long types
+                var idTypeName = entityInfo.IdProperty.TypeName.TrimEnd('?');
+                if (idTypeName == "int" || idTypeName == "Int32" || 
+                    idTypeName == "long" || idTypeName == "Int64")
+                {
+                    entityInfo.AutoId = true;
+                }
+            }
         }
         
         // If still no ID found, use "Id" property by convention

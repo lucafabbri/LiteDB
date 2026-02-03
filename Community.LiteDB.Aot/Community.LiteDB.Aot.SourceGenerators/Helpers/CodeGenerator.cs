@@ -608,9 +608,9 @@ internal static class CodeGenerator
                 if (typeName == "int" || typeName == "Int32" || typeName == "long" || typeName == "Int64" ||
                     typeName == "double" || typeName == "Double" || typeName == "decimal" || typeName == "Decimal")
                 {
-                    // Format numbers using invariant culture to avoid comma/period issues
-                    var minStr = FormatNumber(prop.RangeMin);
-                    var maxStr = FormatNumber(prop.RangeMax);
+                    // Format numbers using invariant culture and cast to target type if needed
+                    var minStr = FormatNumberWithCast(prop.RangeMin, typeName);
+                    var maxStr = FormatNumberWithCast(prop.RangeMax, typeName);
 
                     sb.AppendLine($"        if (entity.{prop.Name} < {minStr} || entity.{prop.Name} > {maxStr})");
                     sb.AppendLine($"            throw new ArgumentOutOfRangeException(nameof(entity), \"Property '{prop.Name}' must be between {minStr} and {maxStr}\");");

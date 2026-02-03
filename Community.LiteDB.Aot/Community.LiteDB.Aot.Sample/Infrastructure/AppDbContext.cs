@@ -20,6 +20,11 @@ public partial class AppDbContext : LiteDbContext
     public AotLiteCollection<ProductWithMoney> ProductsWithMoney => Collection<ProductWithMoney>();
     public AotLiteCollection<UserProfile> UserProfiles => Collection<UserProfile>();
     
+    // [Key] attribute examples - no configuration needed!
+    public AotLiteCollection<ProductWithKeyAttribute> ProductsWithKeyAttr => Collection<ProductWithKeyAttribute>();
+    public AotLiteCollection<DocumentWithGuidKey> Documents => Collection<DocumentWithGuidKey>();
+    public AotLiteCollection<EntityWithStringKey> EntitiesWithStringKey => Collection<EntityWithStringKey>();
+    
     public AppDbContext(string filename) : base(filename)
     {
     }
@@ -83,6 +88,32 @@ public partial class AppDbContext : LiteDbContext
             entity.HasKey(x => x.Id).AutoIncrement();
             entity.ToCollection("user_profiles");
         });
+        
+        // ========================================
+        // [Key] Attribute Examples
+        // ========================================
+        // These entities use [Key] attribute - NO configuration needed!
+        // The source generator automatically detects [Key] and uses it as ID
+        
+        modelBuilder.Entity<ProductWithKeyAttribute>(entity =>
+        {
+            // Note: ProductId is marked with [Key] attribute
+            // No HasKey() needed - detected automatically!
+            entity.ToCollection("products_key_attr");
+        });
+        
+        modelBuilder.Entity<DocumentWithGuidKey>(entity =>
+        {
+            // Note: DocumentId is marked with [Key] attribute (Guid type)
+            entity.ToCollection("documents");
+        });
+        
+        modelBuilder.Entity<EntityWithStringKey>(entity =>
+        {
+            // Note: Code is marked with [Key] attribute (string type)
+            entity.ToCollection("entities_string_key");
+        });
     }
 }
+
 
