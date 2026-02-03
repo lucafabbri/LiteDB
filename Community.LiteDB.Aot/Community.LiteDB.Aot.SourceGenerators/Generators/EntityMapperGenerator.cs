@@ -189,6 +189,13 @@ public class EntityMapperGenerator : IIncrementalGenerator
             propInfo.RangeMax = rangeMax;
             propInfo.RegularExpression = AttributeHelper.GetRegularExpression(property);
             
+            // Additional validation attributes
+            propInfo.IsEmailAddress = AttributeHelper.IsEmailAddress(property);
+            propInfo.IsPhone = AttributeHelper.IsPhone(property);
+            propInfo.IsUrl = AttributeHelper.IsUrl(property);
+            propInfo.IsCreditCard = AttributeHelper.IsCreditCard(property);
+            propInfo.CompareProperty = AttributeHelper.GetCompareProperty(property);
+            
             // Detect collection types
             if (IsCollectionType(property.Type, out var itemType))
             {

@@ -249,4 +249,54 @@ internal static class AttributeHelper
         
         return null;
     }
+    
+    /// <summary>
+    /// Checks if property has [EmailAddress] attribute
+    /// </summary>
+    public static bool IsEmailAddress(IPropertySymbol property)
+    {
+        return HasAttribute(property, "EmailAddress");
+    }
+    
+    /// <summary>
+    /// Checks if property has [Phone] attribute
+    /// </summary>
+    public static bool IsPhone(IPropertySymbol property)
+    {
+        return HasAttribute(property, "Phone");
+    }
+    
+    /// <summary>
+    /// Checks if property has [Url] attribute
+    /// </summary>
+    public static bool IsUrl(IPropertySymbol property)
+    {
+        return HasAttribute(property, "Url");
+    }
+    
+    /// <summary>
+    /// Checks if property has [CreditCard] attribute
+    /// </summary>
+    public static bool IsCreditCard(IPropertySymbol property)
+    {
+        return HasAttribute(property, "CreditCard");
+    }
+    
+    /// <summary>
+    /// Gets [Compare("PropertyName")] target property name
+    /// </summary>
+    public static string? GetCompareProperty(IPropertySymbol property)
+    {
+        var attr = GetAttribute(property, "Compare");
+        if (attr != null && attr.ConstructorArguments.Length > 0)
+        {
+            if (attr.ConstructorArguments[0].Value is string propertyName)
+            {
+                return propertyName;
+            }
+        }
+        
+        return null;
+    }
 }
+

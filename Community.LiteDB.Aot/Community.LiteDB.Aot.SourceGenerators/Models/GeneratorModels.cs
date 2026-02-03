@@ -82,6 +82,11 @@ internal sealed class PropertyInfo
     public object? RangeMin { get; set; }
     public object? RangeMax { get; set; }
     public string? RegularExpression { get; set; }
+    public bool IsEmailAddress { get; set; }
+    public bool IsPhone { get; set; }
+    public bool IsUrl { get; set; }
+    public bool IsCreditCard { get; set; }
+    public string? CompareProperty { get; set; } // For [Compare("PropertyName")]
 }
 
 /// <summary>

@@ -616,6 +616,63 @@ internal static class CodeGenerator
                     sb.AppendLine($"            throw new ArgumentOutOfRangeException(nameof(entity), \"Property '{prop.Name}' must be between {minStr} and {maxStr}\");");
                 }
             }
+            
+            // Regular expression validation
+            if (!string.IsNullOrEmpty(prop.RegularExpression) && 
+                (prop.TypeName == "string" || prop.TypeName == "String"))
+            {
+                sb.AppendLine($"        if (entity.{prop.Name} != null && !System.Text.RegularExpressions.Regex.IsMatch(entity.{prop.Name}, @\"{prop.RegularExpression}\"))");
+                sb.AppendLine($"            throw new ArgumentException(\"Property '{prop.Name}' does not match the required pattern\", nameof(entity));");
+            }
+            
+            // Email validation
+            if (prop.IsEmailAddress && (prop.TypeName == "string" || prop.TypeName == "String"))
+            {
+                sb.AppendLine($"        if (entity.{prop.Name} != null)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var emailPattern = @\"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$\";");
+                sb.AppendLine($"            if (!System.Text.RegularExpressions.Regex.IsMatch(entity.{prop.Name}, emailPattern))");
+                sb.AppendLine($"                throw new ArgumentException(\"Property '{prop.Name}' must be a valid email address\", nameof(entity));");
+                sb.AppendLine("        }");
+            }
+            
+            // Phone validation
+            if (prop.IsPhone && (prop.TypeName == "string" || prop.TypeName == "String"))
+            {
+                sb.AppendLine($"        if (entity.{prop.Name} != null)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var phonePattern = @\"^[\\d\\s\\-\\+\\(\\)]+$\";");
+                sb.AppendLine($"            if (!System.Text.RegularExpressions.Regex.IsMatch(entity.{prop.Name}, phonePattern))");
+                sb.AppendLine($"                throw new ArgumentException(\"Property '{prop.Name}' must be a valid phone number\", nameof(entity));");
+                sb.AppendLine("        }");
+            }
+            
+            // URL validation
+            if (prop.IsUrl && (prop.TypeName == "string" || prop.TypeName == "String"))
+            {
+                sb.AppendLine($"        if (entity.{prop.Name} != null)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            if (!Uri.TryCreate(entity.{prop.Name}, UriKind.Absolute, out _))");
+                sb.AppendLine($"                throw new ArgumentException(\"Property '{prop.Name}' must be a valid URL\", nameof(entity));");
+                sb.AppendLine("        }");
+            }
+            
+            // Credit card validation (Luhn algorithm)
+            if (prop.IsCreditCard && (prop.TypeName == "string" || prop.TypeName == "String"))
+            {
+                sb.AppendLine($"        if (entity.{prop.Name} != null)");
+                sb.AppendLine("        {");
+                sb.AppendLine($"            var cardNumber = entity.{prop.Name}.Replace(\" \", \"\").Replace(\"-\", \"\");");
+                sb.AppendLine($"            if (!System.Text.RegularExpressions.Regex.IsMatch(cardNumber, @\"^\\d{{13,19}}$\"))");
+                sb.AppendLine($"                throw new ArgumentException(\"Property '{prop.Name}' must be a valid credit card number\", nameof(entity));");
+                sb.AppendLine("        }");
+            }
+            
+            // Compare validation (only generate warning comment - runtime comparison needs both values)
+            if (!string.IsNullOrEmpty(prop.CompareProperty))
+            {
+                sb.AppendLine($"        // TODO: Compare validation for '{prop.Name}' == '{prop.CompareProperty}' should be done at application level");
+            }
         }
     }
 

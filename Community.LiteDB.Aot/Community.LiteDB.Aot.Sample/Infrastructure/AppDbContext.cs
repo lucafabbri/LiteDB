@@ -15,6 +15,10 @@ public partial class AppDbContext : LiteDbContext
     public AotLiteCollection<Customer> Customers => Collection<Customer>();
     // public AotLiteCollection<Product> Products => Collection<Product>();  // Temporarily disabled - Range validation issue
     public AotLiteCollection<CustomerWithAddress> CustomersWithAddress => Collection<CustomerWithAddress>();
+    public AotLiteCollection<Order> Orders => Collection<Order>();
+    public AotLiteCollection<Company> Companies => Collection<Company>();
+    public AotLiteCollection<ProductWithMoney> ProductsWithMoney => Collection<ProductWithMoney>();
+    public AotLiteCollection<UserProfile> UserProfiles => Collection<UserProfile>();
     
     public AppDbContext(string filename) : base(filename)
     {
@@ -72,5 +76,13 @@ public partial class AppDbContext : LiteDbContext
             entity.HasKey(x => x.Id).AutoIncrement();
             entity.ToCollection("products_with_money");
         });
+        
+        // Configure UserProfile entity (Full Data Annotations support demo!)
+        modelBuilder.Entity<UserProfile>(entity =>
+        {
+            entity.HasKey(x => x.Id).AutoIncrement();
+            entity.ToCollection("user_profiles");
+        });
     }
 }
+
