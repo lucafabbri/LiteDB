@@ -25,6 +25,9 @@ public partial class AppDbContext : LiteDbContext
     public AotLiteCollection<DocumentWithGuidKey> Documents => Collection<DocumentWithGuidKey>();
     public AotLiteCollection<EntityWithStringKey> EntitiesWithStringKey => Collection<EntityWithStringKey>();
     
+    // ? DDD ValueObject ID example (Strongly-Typed IDs)
+    public AotLiteCollection<OrderWithStronglyTypedId> OrdersWithStrongId => Collection<OrderWithStronglyTypedId>();
+    
     public AppDbContext(string filename) : base(filename)
     {
     }
@@ -113,7 +116,26 @@ public partial class AppDbContext : LiteDbContext
             // Note: Code is marked with [Key] attribute (string type)
             entity.ToCollection("entities_string_key");
         });
+        
+        // ========================================
+        // DDD ValueObject ID Example
+        // ========================================
+        // This entity uses strongly-typed OrderId (ValueObject) as primary key
+        // We specify how to convert between OrderId ? string for BSON storage
+        
+        modelBuilder.Entity<OrderWithStronglyTypedId>(entity =>
+        {
+            // Configure OrderId as key with type-safe conversion to/from string
+            entity.HasKey(x => x.Id)
+                .HasConversion(
+                    toDb: id => id.Value.ToString(),              // OrderId ? string (type-safe!)
+                    fromDb: str => new OrderId(Guid.Parse(str))   // string ? OrderId (type-safe!)
+                );
+            
+            entity.ToCollection("orders_strongly_typed");
+        });
     }
 }
+
 
 

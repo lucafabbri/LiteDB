@@ -410,10 +410,43 @@ public class EntityMapperGenerator : IIncrementalGenerator
                     
                     // Check for AutoIncrement
                     var parent = hasKeyCall.Parent;
-                    if (parent is MemberAccessExpressionSyntax memberAccess &&
-                        memberAccess.Name.Identifier.Text == "AutoIncrement")
+                    if (parent is MemberAccessExpressionSyntax memberAccess)
                     {
-                        entityInfo.AutoId = true;
+                        if (memberAccess.Name.Identifier.Text == "AutoIncrement")
+                        {
+                            entityInfo.AutoId = true;
+                        }
+                        
+                        // Check for HasConversion (ValueObject ID conversion)
+                        // Look for: .HasKey(x => x.Id).HasConversion(toDb: ..., fromDb: ...)
+                        var currentNode = memberAccess.Parent;
+                        while (currentNode != null)
+                        {
+                            if (currentNode is InvocationExpressionSyntax invocation &&
+                                invocation.Expression is MemberAccessExpressionSyntax conversionMember &&
+                                conversionMember.Name.Identifier.Text == "HasConversion")
+                            {
+                                // Extract conversion lambda expressions
+                                if (invocation.ArgumentList.Arguments.Count >= 2)
+                                {
+                                    var toDbArg = invocation.ArgumentList.Arguments[0].Expression;
+                                    var fromDbArg = invocation.ArgumentList.Arguments[1].Expression;
+                                    
+                                    // Parse lambda bodies using LambdaParser
+                                    var toDbBody = LambdaParser.GetLambdaBody(toDbArg);
+                                    var fromDbBody = LambdaParser.GetLambdaBody(fromDbArg);
+                                    
+                                    if (toDbBody != null && fromDbBody != null)
+                                    {
+                                        entityInfo.IdConversionToDb = toDbBody;
+                                        entityInfo.IdConversionFromDb = fromDbBody;
+                                        entityInfo.IdConversionTargetType = "string"; // Always string for LiteDB
+                                    }
+                                }
+                                break;
+                            }
+                            currentNode = currentNode.Parent;
+                        }
                     }
                 }
             }

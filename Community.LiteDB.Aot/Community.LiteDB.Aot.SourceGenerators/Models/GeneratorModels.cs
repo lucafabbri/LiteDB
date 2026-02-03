@@ -15,6 +15,11 @@ internal sealed class EntityInfo
     public PropertyInfo? IdProperty { get; set; }
     public bool AutoId { get; set; }
     
+    // ValueObject ID conversion (for DDD strongly-typed IDs)
+    public string? IdConversionToDb { get; set; }       // e.g., "id => id.Value"
+    public string? IdConversionFromDb { get; set; }     // e.g., "guid => new OrderId(guid)"
+    public string? IdConversionTargetType { get; set; } // e.g., "Guid", "int", "long"
+    
     public List<PropertyInfo> Properties { get; set; } = new();
     public HashSet<string> IgnoredProperties { get; set; } = new();
     

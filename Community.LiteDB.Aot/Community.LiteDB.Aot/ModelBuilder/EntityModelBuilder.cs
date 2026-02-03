@@ -136,6 +136,38 @@ public class KeyBuilder
         _config.AutoId = true;
         return this;
     }
+    
+    /// <summary>
+    /// Configure value conversion for the key property (for ValueObject IDs)
+    /// IMPORTANT: Only string conversion is supported (LiteDB limitation)
+    /// </summary>
+    /// <typeparam name="TKey">The ValueObject ID type (e.g., OrderId)</typeparam>
+    /// <param name="toDb">Lambda to convert from ID to string (e.g., id => id.Value.ToString())</param>
+    /// <param name="fromDb">Lambda to convert from string to ID (e.g., str => new OrderId(Guid.Parse(str)))</param>
+    /// <example>
+    /// <code>
+    /// entity.HasKey(x => x.Id)
+    ///     .HasConversion(
+    ///         toDb: id => id.Value.ToString(),
+    ///         fromDb: str => new OrderId(Guid.Parse(str))
+    ///     );
+    /// </code>
+    /// </example>
+    public KeyBuilder HasConversion<TKey>(
+        Expression<Func<TKey, string>> toDb,
+        Expression<Func<string, TKey>> fromDb)
+    {
+        if (toDb == null) throw new ArgumentNullException(nameof(toDb));
+        if (fromDb == null) throw new ArgumentNullException(nameof(fromDb));
+        
+        // Store the lambda expressions as strings for the source generator to analyze
+        // The source generator will parse the syntax tree to extract the body
+        _config.IdConversionToDb = toDb.ToString();
+        _config.IdConversionFromDb = fromDb.ToString();
+        _config.IdConversionTargetType = "string"; // Always string for LiteDB
+        
+        return this;
+    }
 }
 
 /// <summary>
@@ -211,6 +243,9 @@ internal interface IEntityConfiguration
 internal interface IEntityConfigurationBase
 {
     bool AutoId { get; set; }
+    string? IdConversionToDb { get; set; }
+    string? IdConversionFromDb { get; set; }
+    string? IdConversionTargetType { get; set; }
 }
 
 internal class EntityConfiguration<T> : IEntityConfiguration, IEntityConfigurationBase where T : class
@@ -219,6 +254,9 @@ internal class EntityConfiguration<T> : IEntityConfiguration, IEntityConfigurati
     public string? CollectionName { get; set; }
     public string? IdPropertyName { get; set; }
     public bool AutoId { get; set; }
+    public string? IdConversionToDb { get; set; }
+    public string? IdConversionFromDb { get; set; }
+    public string? IdConversionTargetType { get; set; }
     public Dictionary<string, PropertyConfiguration> Properties { get; } = new();
     public HashSet<string> IgnoredProperties { get; } = new();
 }

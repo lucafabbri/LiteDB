@@ -1,4 +1,5 @@
 using Community.LiteDB.Aot.SourceGenerators.Models;
+using System;
 using System.Text;
 using System.Linq;
 using System.Globalization;
@@ -829,15 +830,41 @@ internal static class CodeGenerator
         // Set ID property
         if (entity.IdProperty != null)
         {
-            var extractionCode = GetBsonValueExtraction("doc[\"_id\"]", entity.IdProperty.TypeName);
-            
-            if (entity.IdProperty.HasPublicSetter)
+            // Check if we need ValueObject conversion
+            if (!string.IsNullOrEmpty(entity.IdConversionFromDb) && !string.IsNullOrEmpty(entity.IdConversionTargetType))
             {
-                sb.AppendLine($"        entity.{entity.IdProperty.Name} = {extractionCode};");
+                // Apply ValueObject conversion
+                var conversionBody = ReplaceLambdaParameter(
+                    entity.IdConversionFromDb,
+                    firstCommonParameterName: "str",
+                    replacement: "dbValue"
+                );
+                
+                sb.AppendLine($"        // ValueObject ID conversion: {entity.IdConversionTargetType} ? {entity.IdProperty.TypeName}");
+                sb.AppendLine($"        var dbValue = {GetBsonValueExtraction("doc[\"_id\"]", entity.IdConversionTargetType)};");
+                
+                if (entity.IdProperty.HasPublicSetter)
+                {
+                    sb.AppendLine($"        entity.{entity.IdProperty.Name} = {conversionBody};");
+                }
+                else if (!string.IsNullOrEmpty(entity.IdProperty.BackingFieldName))
+                {
+                    sb.AppendLine($"        _set{entity.IdProperty.Name}?.Invoke(entity, {conversionBody});");
+                }
             }
-            else if (!string.IsNullOrEmpty(entity.IdProperty.BackingFieldName))
+            else
             {
-                sb.AppendLine($"        _set{entity.IdProperty.Name}?.Invoke(entity, {extractionCode});");
+                // Standard extraction (no conversion)
+                var extractionCode = GetBsonValueExtraction("doc[\"_id\"]", entity.IdProperty.TypeName);
+                
+                if (entity.IdProperty.HasPublicSetter)
+                {
+                    sb.AppendLine($"        entity.{entity.IdProperty.Name} = {extractionCode};");
+                }
+                else if (!string.IsNullOrEmpty(entity.IdProperty.BackingFieldName))
+                {
+                    sb.AppendLine($"        _set{entity.IdProperty.Name}?.Invoke(entity, {extractionCode});");
+                }
             }
         }
         
@@ -914,7 +941,28 @@ internal static class CodeGenerator
         {
             sb.AppendLine($"    public BsonValue GetId({entity.Name} entity)");
             sb.AppendLine("    {");
-            sb.AppendLine($"        return {GetBsonValueConversion($"entity.{entity.IdProperty.Name}", entity.IdProperty.TypeName)};");
+            
+            // Check if we need to apply conversion for ValueObject ID
+            if (!string.IsNullOrEmpty(entity.IdConversionToDb) && !string.IsNullOrEmpty(entity.IdConversionTargetType))
+            {
+                // IdConversionToDb already contains the lambda body (e.g., "id.Value.ToString()")
+                // We need to replace "id" with "entity.Id"
+                var conversionBody = ReplaceLambdaParameter(
+                    entity.IdConversionToDb,
+                    firstCommonParameterName: "id",  // Common parameter names
+                    replacement: $"entity.{entity.IdProperty.Name}"
+                );
+                
+                sb.AppendLine($"        // ValueObject conversion: {entity.IdProperty.TypeName} ? {entity.IdConversionTargetType}");
+                sb.AppendLine($"        var convertedId = {conversionBody};");
+                sb.AppendLine($"        return {GetBsonValueConversion("convertedId", entity.IdConversionTargetType)};");
+            }
+            else
+            {
+                // Standard conversion
+                sb.AppendLine($"        return {GetBsonValueConversion($"entity.{entity.IdProperty.Name}", entity.IdProperty.TypeName)};");
+            }
+            
             sb.AppendLine("    }");
         }
         else
@@ -932,7 +980,57 @@ internal static class CodeGenerator
         {
             sb.AppendLine($"    public void SetId({entity.Name} entity, BsonValue id)");
             sb.AppendLine("    {");
-            sb.AppendLine($"        entity.{entity.IdProperty.Name} = {GetBsonValueExtraction("id", entity.IdProperty.TypeName)};");
+            
+            // Check if we need to apply conversion for ValueObject ID
+            if (!string.IsNullOrEmpty(entity.IdConversionFromDb) && !string.IsNullOrEmpty(entity.IdConversionTargetType))
+            {
+                // IdConversionFromDb already contains the lambda body (e.g., "new OrderId(Guid.Parse(str))")
+                // We need to replace "str" with "dbValue"
+                var conversionBody = ReplaceLambdaParameter(
+                    entity.IdConversionFromDb,
+                    firstCommonParameterName: "str",  // Common parameter names
+                    replacement: "dbValue"
+                );
+                
+                sb.AppendLine($"        // ValueObject conversion: {entity.IdConversionTargetType} ? {entity.IdProperty.TypeName}");
+                sb.AppendLine($"        var dbValue = {GetBsonValueExtraction("id", entity.IdConversionTargetType)};");
+                
+                // Check if ID has public setter or needs reflection/Expression Tree
+                if (entity.IdProperty.HasPublicSetter && !entity.IdProperty.HasInitOnlySetter)
+                {
+                    // Public setter - direct assignment
+                    sb.AppendLine($"        entity.{entity.IdProperty.Name} = {conversionBody};");
+                }
+                else if (!string.IsNullOrEmpty(entity.IdProperty.BackingFieldName))
+                {
+                    // Private setter - use the compiled Expression Tree setter (if available)
+                    sb.AppendLine($"        _set{entity.IdProperty.Name}?.Invoke(entity, {conversionBody});");
+                }
+                else
+                {
+                    // Fallback: try direct assignment (will fail at compile if not accessible)
+                    sb.AppendLine($"        entity.{entity.IdProperty.Name} = {conversionBody};");
+                }
+            }
+            else
+            {
+                // Standard conversion (no ValueObject)
+                if (entity.IdProperty.HasPublicSetter && !entity.IdProperty.HasInitOnlySetter)
+                {
+                    sb.AppendLine($"        entity.{entity.IdProperty.Name} = {GetBsonValueExtraction("id", entity.IdProperty.TypeName)};");
+                }
+                else if (!string.IsNullOrEmpty(entity.IdProperty.BackingFieldName))
+                {
+                    // Use Expression Tree setter
+                    sb.AppendLine($"        var idValue = {GetBsonValueExtraction("id", entity.IdProperty.TypeName)};");
+                    sb.AppendLine($"        _set{entity.IdProperty.Name}?.Invoke(entity, idValue);");
+                }
+                else
+                {
+                    sb.AppendLine($"        entity.{entity.IdProperty.Name} = {GetBsonValueExtraction("id", entity.IdProperty.TypeName)};");
+                }
+            }
+            
             sb.AppendLine("    }");
         }
         else
@@ -942,6 +1040,37 @@ internal static class CodeGenerator
             sb.AppendLine($"        // No ID property to set");
             sb.AppendLine("    }");
         }
+    }
+    
+    /// <summary>
+    /// Replaces parameter name in a lambda body with a new expression
+    /// Tries multiple common parameter names (id, value, x, item, str, guid)
+    /// </summary>
+    /// <param name="lambdaBody">The lambda body (e.g., "id.Value.ToString()")</param>
+    /// <param name="firstCommonParameterName">The most likely parameter name to try first</param>
+    /// <param name="replacement">The replacement expression (e.g., "entity.Id")</param>
+    /// <returns>The body with parameter replaced</returns>
+    private static string ReplaceLambdaParameter(string lambdaBody, string firstCommonParameterName, string replacement)
+    {
+        // Try common parameter names in order of likelihood
+        var commonNames = new[] { firstCommonParameterName, "id", "value", "x", "item", "str", "guid", "val" };
+        
+        foreach (var paramName in commonNames.Distinct())
+        {
+            // Check if this parameter name exists in the body using word boundaries
+            if (System.Text.RegularExpressions.Regex.IsMatch(lambdaBody, $@"\b{System.Text.RegularExpressions.Regex.Escape(paramName)}\b"))
+            {
+                // Replace it
+                return System.Text.RegularExpressions.Regex.Replace(
+                    lambdaBody,
+                    $@"\b{System.Text.RegularExpressions.Regex.Escape(paramName)}\b",
+                    replacement
+                );
+            }
+        }
+        
+        // If no common name found, return as-is (might be a literal or complex expression)
+        return lambdaBody;
     }
 
     /// <summary>
