@@ -361,7 +361,27 @@ internal static class CodeGenerator
             sb.AppendLine($"        // Only include _id if not default value");
             sb.AppendLine($"        if (entity.{entity.IdProperty.Name} != {defaultCheck})");
             sb.AppendLine("        {");
-            sb.AppendLine($"            doc[\"_id\"] = {GetBsonValueConversion($"entity.{entity.IdProperty.Name}", entity.IdProperty.TypeName, entity.IdProperty.IsNullable, entity.IdProperty.IsCollection, entity.IdProperty.CollectionItemType)};");
+            
+            // Check if we need to apply conversion for ValueObject ID
+            if (!string.IsNullOrEmpty(entity.IdConversionToDb) && !string.IsNullOrEmpty(entity.IdConversionTargetType))
+            {
+                // IdConversionToDb already contains the lambda body (e.g., "id.Value.ToString()")
+                // We need to replace "id" with "entity.Id"
+                var conversionBody = ReplaceLambdaParameter(
+                    entity.IdConversionToDb,
+                    firstCommonParameterName: "id",  // Common parameter names
+                    replacement: $"entity.{entity.IdProperty.Name}"
+                );
+                
+                sb.AppendLine($"            // ValueObject conversion: {entity.IdProperty.TypeName} ? {entity.IdConversionTargetType}");
+                sb.AppendLine($"            doc[\"_id\"] = {GetBsonValueConversion(conversionBody, entity.IdConversionTargetType)};");
+            }
+            else
+            {
+                // Standard conversion
+                sb.AppendLine($"            doc[\"_id\"] = {GetBsonValueConversion($"entity.{entity.IdProperty.Name}", entity.IdProperty.TypeName, entity.IdProperty.IsNullable, entity.IdProperty.IsCollection, entity.IdProperty.CollectionItemType)};");
+            }
+            
             sb.AppendLine("        }");
             sb.AppendLine();
         }

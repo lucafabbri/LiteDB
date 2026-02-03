@@ -429,18 +429,37 @@ public class EntityMapperGenerator : IIncrementalGenerator
                                 // Extract conversion lambda expressions
                                 if (invocation.ArgumentList.Arguments.Count >= 2)
                                 {
-                                    var toDbArg = invocation.ArgumentList.Arguments[0].Expression;
-                                    var fromDbArg = invocation.ArgumentList.Arguments[1].Expression;
-                                    
-                                    // Parse lambda bodies using LambdaParser
-                                    var toDbBody = LambdaParser.GetLambdaBody(toDbArg);
-                                    var fromDbBody = LambdaParser.GetLambdaBody(fromDbArg);
-                                    
-                                    if (toDbBody != null && fromDbBody != null)
+                                    ExpressionSyntax? toDbExpr = null;
+                                    ExpressionSyntax? fromDbExpr = null;
+
+                                    // Try to find by name "toDb" and "fromDb"
+                                    foreach (var arg in invocation.ArgumentList.Arguments)
                                     {
-                                        entityInfo.IdConversionToDb = toDbBody;
-                                        entityInfo.IdConversionFromDb = fromDbBody;
-                                        entityInfo.IdConversionTargetType = "string"; // Always string for LiteDB
+                                        if (arg.NameColon?.Name.Identifier.Text == "toDb")
+                                            toDbExpr = arg.Expression;
+                                        else if (arg.NameColon?.Name.Identifier.Text == "fromDb")
+                                            fromDbExpr = arg.Expression;
+                                    }
+                                    
+                                    // Fallback to positional arguments if names not found (0=toDb, 1=fromDb)
+                                    if (toDbExpr == null && fromDbExpr == null)
+                                    {
+                                        toDbExpr = invocation.ArgumentList.Arguments[0].Expression;
+                                        fromDbExpr = invocation.ArgumentList.Arguments[1].Expression;
+                                    }
+                                    
+                                    if (toDbExpr != null && fromDbExpr != null)
+                                    {
+                                        // Parse lambda bodies using LambdaParser
+                                        var toDbBody = LambdaParser.GetLambdaBody(toDbExpr);
+                                        var fromDbBody = LambdaParser.GetLambdaBody(fromDbExpr);
+                                        
+                                        if (toDbBody != null && fromDbBody != null)
+                                        {
+                                            entityInfo.IdConversionToDb = toDbBody;
+                                            entityInfo.IdConversionFromDb = fromDbBody;
+                                            entityInfo.IdConversionTargetType = "string"; // Always string for LiteDB
+                                        }
                                     }
                                 }
                                 break;

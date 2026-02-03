@@ -42,7 +42,7 @@ public class BasicSanityTests : IDisposable
         var retrieved = _db.Customers.FindById(id);
 
         // Assert
-        retrieved.Should().NotBeNull();
+        retrieved.Should().NotBe(null);
         retrieved!.Name.Should().Be("John Doe");
         retrieved.Email.Should().Be("john@example.com");
         retrieved.City.Should().Be("New York");
@@ -103,8 +103,8 @@ public class BasicSanityTests : IDisposable
         var retrieved = _db.CustomersWithAddress.FindById(id);
 
         // Assert
-        retrieved.Should().NotBeNull();
-        retrieved!.Address.Should().NotBeNull();
+        retrieved.Should().NotBe(null);
+        retrieved!.Address.Should().NotBe(null);
         retrieved.Address.City.Should().Be("Boston");
     }
 
@@ -123,7 +123,7 @@ public class BasicSanityTests : IDisposable
         var retrieved = _db.ProductsWithKeyAttr.FindById(id);
 
         // Assert
-        retrieved.Should().NotBeNull();
+        retrieved.Should().NotBe(null);
         retrieved!.Name.Should().Be("Test Product");
     }
 }

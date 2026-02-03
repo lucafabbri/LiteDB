@@ -23,23 +23,25 @@ public class AotLiteCollection<T> where T : class
     #region Insert
     
     /// <summary>
-    /// Insert a new entity into collection. Returns number of inserted documents.
+    /// Insert a new entity into collection. Returns the ID of the inserted document.
     /// If entity has an AutoId field, it will be populated after insert.
     /// </summary>
-    public int Insert(T entity)
+    public BsonValue Insert(T entity)
     {
         if (entity == null) throw new ArgumentNullException(nameof(entity));
         
         var doc = _mapper.Serialize(entity);
-        var result = _engine.Insert(_mapper.CollectionName, new[] { doc }, BsonAutoId.Int32);
+        var count = _engine.Insert(_mapper.CollectionName, new[] { doc }, BsonAutoId.Int32);
         
-        // Set generated ID back to entity
-        if (result > 0)
+        var id = doc["_id"];
+        
+        // Set generated ID back to entity if insertion succeeded
+        if (count > 0)
         {
-            _mapper.SetId(entity, doc["_id"]);
+            _mapper.SetId(entity, id);
         }
         
-        return result;
+        return id;
     }
     
     /// <summary>
